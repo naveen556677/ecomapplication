@@ -1,46 +1,23 @@
 // src/api/axiosClient.js
 import axios from 'axios';
-import useStore from '../store/useStore';
-import { Alert } from 'react-native';
 
-const API_BASE = 'https://catalog-management-system-dev-ak3ogf6zea-uc.a.run.app';
-
+// adjust baseURL if needed
 const api = axios.create({
-  baseURL: API_BASE,
+  baseURL: 'https://catalog-management-system-dev-ak3ogf6zea-uc.a.run.app',
   timeout: 15000,
   headers: {
-    Accept: 'application/json',
+    'accept': 'application/json',
     'Content-Type': 'application/json',
-  },
+    'x-internal-call': 'true'
+  }
 });
 
-api.interceptors.request.use(
-  (config) => {
-    try {
-      const state = useStore.getState();
-      const token = state?.user?.idToken || state?.user?.accessToken || state?.token;
-      if (token) {
-        config.headers = config.headers ?? {};
-        config.headers.Authorization = `Bearer ${token}`;
-      }
-    } catch (e) {
-      console.warn('Axios request interceptor error', e?.message || e);
-    }
-    return config;
-  },
-  (err) => Promise.reject(err)
-);
-
-api.interceptors.response.use(
-  (res) => res,
-  (error) => {
-    const status = error?.response?.status;
-    if (status === 401) {
-      try { useStore.getState().logout(); } catch (e) {}
-      Alert.alert('Session', 'Authentication required. Please login again.');
-    }
-    return Promise.reject(error);
-  }
-);
+// attach token if you store auth somewhere (mmkv/zustand)
+api.interceptors.request.use(async (cfg) => {
+  // example: add bearer if available
+  // const token = await getTokenFromStore();
+  // if (token) cfg.headers.Authorization = `Bearer ${token}`;
+  return cfg;
+});
 
 export default api;
