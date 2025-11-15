@@ -1,25 +1,27 @@
-// src/navigation/AppNavigator.js
 import React from 'react';
-import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import LoginScreen from '../screens/LoginScreen';
-import ProductsScreen from '../screens/ProductsScreen';
+import ProductsListScreen from '../screens/ProductsListScreen';
 import ProductDetailsScreen from '../screens/ProductDetailsScreen';
 import CartScreen from '../screens/CartScreen';
-import ScannerScreen from '../screens/ScannerScreen';
+// import ScannerScreen from '../screens/ScannerScreen';
+// import ScannerTestScreen from '../screens/ScannerTestScreen';
 
 const Stack = createNativeStackNavigator();
 
 export default function AppNavigator() {
   return (
-    <NavigationContainer>
-      <Stack.Navigator initialRouteName="Login" screenOptions={{ headerShown: true }}>
-        <Stack.Screen name="Login" component={LoginScreen} />
-        <Stack.Screen name="Products" component={ProductsScreen} />
-        <Stack.Screen name="ProductDetails" component={ProductDetailsScreen} />
-        <Stack.Screen name="Cart" component={CartScreen} />
-        {/* <Stack.Screen name="Scanner" component={ScannerScreen} options={{ title: 'Barcode Scanner' }} /> */}
-      </Stack.Navigator>
-    </NavigationContainer>
+    <Stack.Navigator initialRouteName="Login">
+      <Stack.Screen name="Login" component={LoginScreen} />
+      <Stack.Screen name="Products" component={ProductsListScreen}  options={{
+        headerShown:false
+      }} />
+      <Stack.Screen name="ProductDetails" component={ProductDetailsScreen} />
+      <Stack.Screen name="Cart" component={CartScreen}  options={{
+        headerShown:false
+      }} />
+      {/* <Stack.Screen name="Scanner" component={ScannerScreen} />
+      <Stack.Screen name="ScannerTest" component={ScannerTestScreen} /> */}
+    </Stack.Navigator>
   );
 }
