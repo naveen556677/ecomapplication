@@ -1,5 +1,5 @@
 // src/screens/ProductsListScreen.js
-import React, { useEffect, useCallback, useMemo, useRef } from 'react';
+import React, { useEffect, useCallback, useMemo, useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -17,6 +17,8 @@ import ImageCarousel from '../components/ImageCarousel';
 import { useProductsStore } from '../store/productsStore';
 import useStore from '../store/useStore';
 import { debounce } from '../utils/debounce';
+import { ScannerScreen } from './ScannerScreen';
+import { useCameraPermission } from 'react-native-vision-camera';
 
 const { width } = Dimensions.get('window');
 const GRID_GAP = 12;
@@ -33,6 +35,8 @@ export default function ProductsListScreen({ navigation }) {
   const refreshing = useProductsStore((s) => s.refreshing);
   const refresh = useProductsStore((s) => s.refresh);
   const hasMore = useProductsStore((s) => s.hasMore);
+  const [isScanner, setScanner] = useState(false);
+  const {hasPermissions} = useCameraPermission()
 
   const addToCart = useStore((s) => s.addToCart);
   const cart = useStore((s) => s.cart || []);
@@ -172,6 +176,28 @@ export default function ProductsListScreen({ navigation }) {
     </View>
   );
 
+  // A small presentational component that draws a "scanner" glyph using corner bars.
+  // This avoids depending on an external icon library. You can replace with an image or icon if you prefer.
+  const ScanButton = () => (
+    <TouchableOpacity
+      accessibilityLabel="Open scanner"
+      activeOpacity={0.85}
+      onPress={() => setScanner((prev) => {
+        
+        return !prev
+      })}
+      style={styles.scanButton}
+    >
+      {(!hasPermissions && !isScanner) ? <View style={styles.scanIcon}>
+        <View style={[styles.corner, styles.topLeft]} />
+        <View style={[styles.corner, styles.topRight]} />
+        <View style={[styles.corner, styles.bottomLeft]} />
+        <View style={[styles.corner, styles.bottomRight]} />
+      </View> : <Text style={{color : "white"}}>Close</Text>
+      }
+    </TouchableOpacity>
+  );
+
   return (
     <View style={styles.container}>
       {/* Animated header overlay (sticky feel) */}
@@ -218,6 +244,10 @@ export default function ProductsListScreen({ navigation }) {
 
       {/* Floating cart button */}
       {/* <FloatingCartButton onPress={() => navigation.navigate('Cart')} count={cartCount} /> */}
+
+      {/* Bottom-center scanner button (like GPay scanner) */}
+      <ScanButton />
+      {isScanner && <ScannerScreen isScanner={isScanner} setScanner={setScanner}/>}
     </View>
   );
 }
@@ -276,7 +306,7 @@ const styles = StyleSheet.create({
   featuredWrap: { paddingVertical: 12 },
 
   // grid/card
-  grid: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between',gap:10 },
+  grid: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', gap: 10 },
   cardWrapper: { width: CARD_WIDTH, marginBottom: 14 },
   card: {
     width: CARD_WIDTH,
@@ -300,4 +330,41 @@ const styles = StyleSheet.create({
 
   empty: { alignItems: 'center', padding: 28, marginTop: 50 },
   reloadBtn: { marginTop: 14, backgroundColor: '#007bff', paddingHorizontal: 18, paddingVertical: 10, borderRadius: 10 },
+
+  // scanner button styles
+  scanButton: {
+    position: 'absolute',
+    bottom: 22,
+    alignSelf: 'center',
+    width: 72,
+    height: 72,
+    borderRadius: 36,
+    backgroundColor: '#111827',
+    alignItems: 'center',
+    justifyContent: 'center',
+    elevation: 8,
+    shadowColor: '#000',
+    shadowOpacity: 0.18,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 6 },
+    zIndex: 40,
+  },
+  scanIcon: {
+    width: 44,
+    height: 44,
+    alignItems: 'center',
+    justifyContent: 'center',
+    position: 'relative',
+  },
+  corner: {
+    position: 'absolute',
+    width: 14,
+    height: 3,
+    backgroundColor: '#fff',
+    borderRadius: 2,
+  },
+  topLeft: { left: 0, top: 0, transform: [{ rotate: '0deg' }] },
+  topRight: { right: 0, top: 0, transform: [{ rotate: '90deg' }] },
+  bottomLeft: { left: 0, bottom: 0, transform: [{ rotate: '270deg' }] },
+  bottomRight: { right: 0, bottom: 0, transform: [{ rotate: '180deg' }] },
 });

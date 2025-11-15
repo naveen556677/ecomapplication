@@ -4,7 +4,7 @@ import LoginScreen from '../screens/LoginScreen';
 import ProductsListScreen from '../screens/ProductsListScreen';
 import ProductDetailsScreen from '../screens/ProductDetailsScreen';
 import CartScreen from '../screens/CartScreen';
-// import ScannerScreen from '../screens/ScannerScreen';
+import { ScannerScreen } from '../screens/ScannerScreen';
 // import ScannerTestScreen from '../screens/ScannerTestScreen';
 
 const Stack = createNativeStackNavigator();
@@ -20,8 +20,8 @@ export default function AppNavigator() {
       <Stack.Screen name="Cart" component={CartScreen}  options={{
         headerShown:false
       }} />
-      {/* <Stack.Screen name="Scanner" component={ScannerScreen} />
-      <Stack.Screen name="ScannerTest" component={ScannerTestScreen} /> */}
+      <Stack.Screen name="Scanner" component={ScannerScreen} />
+      {/* <Stack.Screen name="ScannerTest" component={ScannerTestScreen} />  */}
     </Stack.Navigator>
   );
 }

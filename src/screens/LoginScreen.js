@@ -11,6 +11,7 @@ import {
   Animated,
 } from 'react-native';
 import useStore from '../store/useStore';
+import { ScannerScreen } from './ScannerScreen';
 
 // Defensive import for Google Signin same as original
 let GoogleSignin;
@@ -186,6 +187,7 @@ export default function LoginScreen({ navigation }) {
             Google Sign-In module not found. Install {'@react-native-google-signin/google-signin'} to enable real Google sign-in.
           </Text>
         )}
+        
       </View>
 
       <View style={styles.footer}>
