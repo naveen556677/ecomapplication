@@ -9,6 +9,7 @@ import {
 } from 'react-native';
 import { formatPrice } from '../utils/priceHelpers';
 import { extractPrices } from '../utils/price';
+import ImagePng from '../assets/productimage.jpg';
 
 export default function CartItemRow({ item, onIncrease, onDecrease, onRemove }) {
   const title = item.title || item.name || item.productSnapshot?.name || 'Unknown product';

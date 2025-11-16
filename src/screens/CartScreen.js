@@ -1,3 +1,4 @@
+// src/screens/CartScreen.js
 import React, { useMemo, useState } from 'react';
 import {
   View,
@@ -11,6 +12,7 @@ import {
   Platform,
   StatusBar,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import useStore from '../store/useStore';
 import CartItemRow from '../components/CartItemRow';
 import { formatPrice } from '../utils/priceHelpers';
@@ -22,8 +24,13 @@ export default function CartScreen({ navigation }) {
   const removeFromCart = useStore(s => s.removeFromCart);
   const clearAll = useStore(s => s.clearAll);
 
+  const insets = useSafeAreaInsets();
+
   const [couponApplied, setCouponApplied] = useState(false);
   const [couponCode, setCouponCode] = useState('');
+
+  // Increase this if you enlarge the checkout card
+  const CHECKOUT_CARD_HEIGHT = 260;
 
   const subtotal = useMemo(() => {
     let s = 0;
@@ -109,6 +116,9 @@ export default function CartScreen({ navigation }) {
     );
   }
 
+  // ensure last visible item can scroll above the checkout card + safe area
+  const contentPaddingBottom = CHECKOUT_CARD_HEIGHT + insets.bottom + 50;
+
   return (
     <View style={styles.container}>
       <StatusBar barStyle="dark-content" />
@@ -131,11 +141,15 @@ export default function CartScreen({ navigation }) {
             onRemove={() => confirmRemove(item.id)}
           />
         )}
-        contentContainerStyle={{ paddingBottom: 220 }}
         ItemSeparatorComponent={() => <View style={styles.separator} />}
+        style={styles.list}
+        contentContainerStyle={[styles.listContent, { paddingBottom: contentPaddingBottom }]}
+        showsVerticalScrollIndicator={true}
+        keyboardShouldPersistTaps="handled"
       />
 
-      <View style={styles.checkoutCard}>
+      {/* Checkout card - positioned above the bottom safe area */}
+      <View style={[styles.checkoutCard, { bottom: insets.bottom + 12 }]}>
         <View style={styles.rowBetween}>
           <View>
             <Text style={styles.smallLabel}>Subtotal</Text>
@@ -214,14 +228,17 @@ const styles = StyleSheet.create({
 
   separator: { height: 12 },
 
+  // make checkout card height match CHECKOUT_CARD_HEIGHT constant (for padding calc)
   checkoutCard: {
     position: 'absolute',
     left: 12,
     right: 12,
-    bottom: 12,
+    // use minHeight so content can grow slightly; height reserved by CHECKOUT_CARD_HEIGHT constant
+    minHeight: 220,
     backgroundColor: '#fff',
     borderRadius: 16,
     padding: 16,
+    zIndex: 50,
     // shadow
     ...Platform.select({
       ios: { shadowColor: '#000', shadowOpacity: 0.08, shadowOffset: { width: 0, height: 6 }, shadowRadius: 12 },
@@ -265,7 +282,9 @@ const styles = StyleSheet.create({
   totalLabel: { fontSize: 18, fontWeight: '800', color: '#0f172a' },
   totalAmount: { fontSize: 18, fontWeight: '800', color: '#0f172a' },
 
-  buttonsRow: { flexDirection: 'row', justifyContent: 'space-between', gap: 12 },
+  // Buttons row: primary takes remaining space, ghost has fixed width
+  buttonsRow: { flexDirection: 'row', alignItems: 'center', marginTop: 6 },
+
   primaryButton: {
     flex: 1,
     height: 48,
@@ -273,9 +292,10 @@ const styles = StyleSheet.create({
     backgroundColor: '#111827',
     justifyContent: 'center',
     alignItems: 'center',
-    marginRight: 8
+    marginRight: 12
   },
-    emtPrimaryButton: {
+
+  emtPrimaryButton: {
     height: 48,
     padding:10,
     borderRadius: 12,
@@ -284,17 +304,32 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginRight: 8
   },
+
   primaryButtonText: { color: '#fff', fontWeight: '700' },
+
   ghostButton: {
+    width: 120,
+    minWidth: 100,
     height: 48,
     borderRadius: 12,
     borderWidth: 1,
     borderColor: '#e6e9ef',
     justifyContent: 'center',
     alignItems: 'center',
-    paddingHorizontal: 16
+    paddingHorizontal: 12,
+    backgroundColor: '#fff'
   },
   ghostButtonText: { color: '#6b7280', fontWeight: '700' },
+
+  // List styles
+  list: {
+    flex: 1,
+    paddingHorizontal: 12,
+    paddingTop: 8,
+  },
+  listContent: {
+    // bottom padding set dynamically
+  },
 
   emptyContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 24, backgroundColor: '#f6f7fb' },
   emptyImage: { width: 160, height: 140, marginBottom: 18, resizeMode: 'contain' },

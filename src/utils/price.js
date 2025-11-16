@@ -17,20 +17,20 @@ export function extractPrices(input) {
   if (!input) return { mrp: 0, selling: 0, offer: 0, bestPrice: 0, discountPct: 0 };
 
   // allow caller to pass a product or a variant
-  const variant = input.variants && input.variants[0] ? input.variants[0] : input;
+  let variant = input.variants && input.variants[0] ? input.variants[0] : input;
 
-  const inv = variant?.inventorySync || {};
+  let inv = variant?.inventorySync || {};
 
-  const mrp = Number(inv.mrp ?? variant?.mrp ?? 0) || 0;
-  const selling = Number(inv.sellingPrice ?? variant?.sellingPrice ?? 0) || 0;
-  const offer = Number(inv.offerPrice ?? variant?.offerPrice ?? 0) || 0;
+  let mrp = Number(inv?.mrp ?? variant?.mrp ?? 0) || 0;
+  let selling = Number(inv.sellingPrice ?? variant?.sellingPrice ?? 0) || 0;
+  let offer = Number(inv.offerPrice ?? variant?.offerPrice ?? 0) || 0;
 
   // fallback to mrpData if present
   if ((!mrp || !selling) && Array.isArray(variant?.mrpData) && variant.mrpData.length > 0) {
-    const md = variant.mrpData[0] || {};
-    const mdMrp = Number(md.mrp) || 0;
-    const mdSelling = Number(md.sellingPrice) || 0;
-    const mdOffer = Number(md.offerPrice) || 0;
+    let md = variant.mrpData[0] || {};
+    let mdMrp = Number(md.mrp) || 0;
+    let mdSelling = Number(md.sellingPrice) || 0;
+    let mdOffer = Number(md.offerPrice) || 0;
     if (!mrp && mdMrp) mrp = mdMrp;
     if (!selling && mdSelling) selling = mdSelling;
     if (!offer && mdOffer) offer = mdOffer;
@@ -40,10 +40,10 @@ export function extractPrices(input) {
   let bestPrice = offer || selling || mrp || 0;
 
   // if variant has unitLevelPrice
-  const unitLevel = Number(variant?.unitLevelPrice || 0) || 0;
+  let unitLevel = Number(variant?.unitLevelPrice || 0) || 0;
   if (unitLevel > 0) bestPrice = unitLevel;
 
-  const discountPct = getDiscountPercent(mrp, bestPrice);
+  let discountPct = getDiscountPercent(mrp, bestPrice);
 
   return { mrp, selling, offer, bestPrice, discountPct };
 }

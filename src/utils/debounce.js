@@ -1,4 +1,4 @@
-export function debounce(fn, wait = 300) {
+export function debounce(fn, wait = 5000) {
   let t;
   return (...args) => {
     clearTimeout(t);

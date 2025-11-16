@@ -3,6 +3,7 @@ import { StatusBar, LogBox, Platform } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { NavigationContainer } from '@react-navigation/native';
 import AppNavigator from './src/navigation/AppNavigator';
+import { SafeAreaView } from 'react-native-safe-area-context';
 
 // ignore some noisy warnings during development (optional)
 LogBox.ignoreLogs([
@@ -17,9 +18,12 @@ export default function App() {
         {/* Global StatusBar */}
         <StatusBar
           barStyle={Platform.OS === 'ios' ? 'dark-content' : 'light-content'}
-          backgroundColor="grey"
+          backgroundColor="lightgrey"
         />
-        <AppNavigator />
+        <SafeAreaView style={{flex : 1}}>
+          <AppNavigator />
+        </SafeAreaView>
+
       </NavigationContainer>
     </GestureHandlerRootView>
   );

@@ -102,22 +102,19 @@ export default function LoginScreen({ navigation }) {
     }
     setLoading(true);
     try {
-      if (typeof GoogleSignin.hasPlayServices === 'function') {
-        await GoogleSignin.hasPlayServices({ showPlayServicesUpdateDialog: true });
-      }
-      if (typeof GoogleSignin.signIn === 'function') {
-        const userInfo = await GoogleSignin.signIn();
-        const payload = {
-          id: userInfo.user?.id ?? userInfo.id ?? null,
-          name: userInfo.user?.name ?? userInfo.name ?? null,
-          email: userInfo.user?.email ?? userInfo.email ?? null,
-          idToken: userInfo.idToken ?? null,
-        };
-        setUser(payload);
-        navigation.replace('Products');
-      } else {
-        Alert.alert('Google Sign-In not supported', 'This build of the Google Sign-In module does not expose signIn().');
-      }
+
+      await GoogleSignin.hasPlayServices();
+      const userInfo = await GoogleSignin.signIn();
+      console.log(userInfo, "for error")
+      const payload = {
+        id: userInfo.user?.id ?? userInfo.id ?? null,
+        name: userInfo.user?.name ?? userInfo.name ?? null,
+        email: userInfo.user?.email ?? userInfo.email ?? null,
+        idToken: userInfo.idToken ?? null,
+      };
+      setUser(payload);
+      navigation.replace('Products');
+
     } catch (e) {
       console.error('Google sign in error', e);
       Alert.alert('Sign-in failed', (e && e.message) ? e.message : String(e));
@@ -164,30 +161,15 @@ export default function LoginScreen({ navigation }) {
           )}
         </Pressable>
 
-        <Pressable
-          style={({ pressed }) => [styles.secondaryButton, pressed && styles.buttonPressed]}
-          onPress={signInMock}
-          accessibilityRole="button"
-          accessibilityLabel="Sign in with demo account"
-        >
-          <Text style={styles.secondaryText}>Continue as Demo User</Text>
-        </Pressable>
 
-        <Pressable
-          style={({ pressed }) => [styles.ghostButton, pressed && styles.buttonPressed]}
-          onPress={() => navigation.navigate('ScannerTest')}
-          accessibilityRole="button"
-          accessibilityLabel="Open scanner test"
-        >
-          <Text style={styles.ghostText}>Scanner test (dev)</Text>
-        </Pressable>
+      
 
         {!googleAvailable && (
           <Text style={styles.warnText} accessibilityRole="alert">
             Google Sign-In module not found. Install {'@react-native-google-signin/google-signin'} to enable real Google sign-in.
           </Text>
         )}
-        
+
       </View>
 
       <View style={styles.footer}>

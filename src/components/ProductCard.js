@@ -1,5 +1,5 @@
 // src/components/ProductCard.js
-import React, { useMemo, useRef } from 'react';
+import React, { useMemo, useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -9,20 +9,12 @@ import {
   Animated,
   Platform,
   AccessibilityInfo,
+  ActivityIndicator,
 } from 'react-native';
+import { useNavigation } from '@react-navigation/native';
+import useStore from '../store/useStore';
+import ImagePng from '../assets/productimage.jpg';
 
-/**
- * ProductCard (modern)
- * Props:
- *  - product: product object
- *  - onPress: fn
- *  - onQuickAdd: fn
- *  - onToggleFav: fn (optional) // will be called with product
- *
- * Usage: <ProductCard product={p} onPress={...} onQuickAdd={...} />
- */
-
-// tiny formatPrice fallback
 let formatPrice;
 try {
   formatPrice = require('../utils/priceHelpers').formatPrice;
@@ -30,13 +22,40 @@ try {
   formatPrice = (n = 0) => `${Number(n || 0).toFixed(2)}`;
 }
 
-export default function ProductCard({ product = {}, onPress = () => {}, onQuickAdd = () => {}, onToggleFav = () => {}, style }) {
+export default function ProductCard({
+  product = {},
+  onPress = () => {},
+  onQuickAdd = () => {},
+  onToggleFav = () => {},
+  isAdding = false,
+  style,
+}) {
+  const navigation = useNavigation();
+  const cart = useStore((s) => s.cart || []);
+  const [imgFailed, setImgFailed] = useState(false);
+
   const title = product.title || product.name || 'Untitled product';
 
-  const image =
+  const rawImage =
     (Array.isArray(product.imageUrls) && product.imageUrls[0]) ||
     (Array.isArray(product.variants) && Array.isArray(product.variants[0]?.images) && product.variants[0].images[0]) ||
-    'https://picsum.photos/800/800';
+    ImagePng;
+
+  // normalize to a valid <Image> source
+  const imageSource = (() => {
+    if (imgFailed) return ImagePng;
+    if (!rawImage) return ImagePng;
+    // Local asset (require) resolves to a number
+    if (typeof rawImage === 'number') return rawImage;
+    // Already an object with uri or url
+    if (typeof rawImage === 'object' && (rawImage.uri || rawImage.url)) {
+      return { uri: rawImage.uri || rawImage.url };
+    }
+    // string URL
+    if (typeof rawImage === 'string') return { uri: rawImage };
+    // fallback
+    return ImagePng;
+  })();
 
   // price detection (defensive)
   const variant = Array.isArray(product.variants) ? product.variants[0] : null;
@@ -44,8 +63,20 @@ export default function ProductCard({ product = {}, onPress = () => {}, onQuickA
   const mrp = variant?.mrp ?? product?.mrp ?? selling;
   const discountPct = mrp && mrp > selling ? Math.round(((mrp - selling) / mrp) * 100) : 0;
 
-  // tiny rating fallback (if product.rating not present)
-  const rating = Math.min(5, Math.max(0, Number(product.rating ?? (Math.random() * 1.5 + 3).toFixed(1))));
+  const rating = product?.rating ?? '-';
+
+  // identify product id consistently
+  const productId = product.productId ?? product.id ?? null;
+
+  // determine if product already in cart (qty > 0)
+  const inCart = useMemo(() => {
+    if (!productId) return false;
+    return cart.some((it) => {
+      const id = it.id ?? it.productId ?? null;
+      const qty = Number(it.qty ?? it.quantity ?? it.count ?? 0);
+      return id && id.toString() === productId.toString() && qty > 0;
+    });
+  }, [cart, productId]);
 
   // press animation
   const scale = useRef(new Animated.Value(1)).current;
@@ -55,11 +86,35 @@ export default function ProductCard({ product = {}, onPress = () => {}, onQuickA
   // a11y
   const a11y = `${title}. Price ${formatPrice(selling)}${discountPct > 0 ? `, ${discountPct}% off` : ''}`;
 
+  // footer button handlers
+  const handleAddPress = (e) => {
+    e?.stopPropagation?.();
+    if (isAdding) return; // guard
+    onQuickAdd(product);
+    if (AccessibilityInfo.announceForAccessibility) {
+      AccessibilityInfo.announceForAccessibility(`${title} added to cart`);
+    }
+  };
+
+  const handleViewPress = (e) => {
+    e?.stopPropagation?.();
+    try {
+      navigation.navigate('Cart');
+      if (AccessibilityInfo.announceForAccessibility) {
+        AccessibilityInfo.announceForAccessibility('Opened cart');
+      }
+    } catch (err) {
+      console.warn('Navigation to Cart failed', err);
+    }
+  };
+
   return (
     <Animated.View style={[styles.cardWrap, { transform: [{ scale }] }, style]}>
       <TouchableOpacity
         activeOpacity={0.95}
-        onPress={() => { onPress(product); }}
+        onPress={() => {
+          onPress(product);
+        }}
         onPressIn={pressIn}
         onPressOut={pressOut}
         accessibilityRole="button"
@@ -68,26 +123,26 @@ export default function ProductCard({ product = {}, onPress = () => {}, onQuickA
       >
         {/* Image area */}
         <View style={styles.imageArea}>
-          <Image source={{ uri: image }} style={styles.image} />
-
-          {/* top-right favorite */}
-          {/* <TouchableOpacity
-            onPress={(e) => { e.stopPropagation?.(); onToggleFav(product); }}
-            style={styles.favBtn}
-            accessibilityLabel="Toggle favorite"
-            accessibilityRole="button"
-          >
-            <Text style={styles.favIcon}>♡</Text>
-          </TouchableOpacity> */}
+          <Image
+            source={imageSource}
+            style={styles.image}
+            resizeMode="cover"
+            onError={() => {
+              // fallback to bundled placeholder if remote fails
+              setImgFailed(true);
+            }}
+          />
 
           {/* bottom info overlay */}
           <View style={styles.overlay}>
             <View style={{ flex: 1 }}>
-              <Text numberOfLines={1} style={styles.title}>{title}</Text>
+              <Text numberOfLines={1} style={styles.title}>
+                {title}
+              </Text>
               <View style={styles.row}>
                 <View style={styles.rating}>
                   <Text style={styles.star}>★</Text>
-                  <Text style={styles.ratingText}>{rating.toFixed(1)}</Text>
+                  <Text style={styles.ratingText}>{rating}</Text>
                 </View>
                 <Text numberOfLines={1} style={styles.categoryText}>
                   {(product.appCategories?.categoryLevel2?.[0]) || (product.industryType?.[0]) || ''}
@@ -103,21 +158,34 @@ export default function ProductCard({ product = {}, onPress = () => {}, onQuickA
           </View>
         </View>
 
-        {/* Footer: small description + add button */}
+        {/* Footer: small description + add/view button */}
         <View style={styles.footer}>
           <Text style={styles.desc} numberOfLines={2}>
             {product.shortDescription ?? product.description ?? ''}
           </Text>
 
-          <TouchableOpacity
-            style={styles.addBtn}
-            onPress={(e) => { e.stopPropagation?.(); onQuickAdd(product); AccessibilityInfo.announceForAccessibility && AccessibilityInfo.announceForAccessibility('Added to cart'); }}
-            accessibilityRole="button"
-            accessibilityLabel={`Add ${title} to cart`}
-            activeOpacity={0.85}
-          >
-            <Text style={styles.addText}>Add</Text>
-          </TouchableOpacity>
+          {inCart ? (
+            <TouchableOpacity
+              style={[styles.addBtn, styles.viewBtn]}
+              onPress={handleViewPress}
+              accessibilityRole="button"
+              accessibilityLabel={`View ${title} in cart`}
+              activeOpacity={0.85}
+            >
+              <Text style={styles.addText}>View</Text>
+            </TouchableOpacity>
+          ) : (
+            <TouchableOpacity
+              style={[styles.addBtn, isAdding && styles.disabledBtn]}
+              onPress={handleAddPress}
+              accessibilityRole="button"
+              accessibilityLabel={`Add ${title} to cart`}
+              activeOpacity={0.85}
+              disabled={isAdding}
+            >
+              {isAdding ? <ActivityIndicator size="small" color="#fff" /> : <Text style={styles.addText}>Add</Text>}
+            </TouchableOpacity>
+          )}
         </View>
       </TouchableOpacity>
     </Animated.View>
@@ -152,26 +220,7 @@ const styles = StyleSheet.create({
   image: {
     width: '100%',
     height: '100%',
-    resizeMode: 'cover',
   },
-
-  favBtn: {
-    position: 'absolute',
-    top: 10,
-    right: 10,
-    backgroundColor: 'rgba(255,255,255,0.9)',
-    width: 36,
-    height: 36,
-    borderRadius: 10,
-    alignItems: 'center',
-    justifyContent: 'center',
-    shadowColor: '#000',
-    shadowOpacity: 0.06,
-    shadowRadius: 6,
-    shadowOffset: { width: 0, height: 3 },
-    elevation: 4,
-  },
-  favIcon: { fontSize: 18, color: '#ff3b30' },
 
   overlay: {
     position: 'absolute',
@@ -192,7 +241,7 @@ const styles = StyleSheet.create({
     marginBottom: 4,
   },
 
-  row: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  row: { flexDirection: 'row', alignItems: 'center' },
 
   rating: { flexDirection: 'row', alignItems: 'center', marginRight: 8 },
   star: { color: '#FFD166', marginRight: 6, fontSize: 14 },
@@ -228,5 +277,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  viewBtn: {
+    backgroundColor: '#0b84ff',
+  },
+  disabledBtn: { opacity: 0.7 },
   addText: { color: '#fff', fontWeight: '800' },
 });

@@ -143,12 +143,13 @@ const useStore = createZustand((set, get) => ({
     set({ cart });
   },
 
-  addScan: (code) => {
-    if (!code) return;
-    const normalized = String(code).trim();
-    const prev = get().scans || [];
-    const filtered = prev.filter(c => String(c) !== normalized);
-    const scans = [normalized, ...filtered].slice(0, 5);
+  addScan: (product) => {
+    if (!product) return;
+    const normalized = product;
+    let prev = get()?.scans || [];
+    console.log(prev, "Xus")
+    prev = prev?.filter((eachItem) => eachItem?.productId != normalized?.productId)
+    const scans = [normalized, ...prev].slice(0, 5);
     try { storage.set('scans', safeStringify(scans)); } catch (e) { console.warn('storage.set scans failed', e); }
     set({ scans });
   },

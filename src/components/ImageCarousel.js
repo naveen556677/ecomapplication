@@ -18,22 +18,34 @@ import {
   StyleSheet,
   TouchableOpacity,
   Text,
-  Platform,
 } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 
+import banner1 from "../assets/banner1.png";
+import banner2 from "../assets/banner2.png";
+
 const { width: WINDOW_WIDTH } = Dimensions.get('window');
 const DEFAULT_HEIGHT = Math.round(WINDOW_WIDTH * 0.8); // taller for product images
-const FALLBACK = 'https://picsum.photos/1200/1200';
+const FALLBACK = banner1;
 
-// default dummy slides
-const DEFAULT_DUMMY = [
-  'https://picsum.photos/id/1015/1200/800',
-  'https://picsum.photos/id/1011/1200/800',
-  'https://picsum.photos/id/1003/1200/800',
-];
+// default dummy slides (local requires)
+const DEFAULT_DUMMY = [banner1, banner2];
 
-const normalizeSlide = (s) => (typeof s === 'string' ? { uri: s } : (s && s.uri ? s : { uri: FALLBACK }));
+/**
+ * normalizeSlide
+ * Accepts:
+ *  - string URL -> returns { uri: string }
+ *  - local require (number) -> returns the number (usable as Image source)
+ *  - object { uri: '...' } -> returns as-is
+ *  - anything else -> returns FALLBACK (local asset)
+ */
+const normalizeSlide = (s) => {
+  if (!s) return FALLBACK;
+  if (typeof s === 'number') return s; // local require
+  if (typeof s === 'string') return { uri: s };
+  if (typeof s === 'object' && (s.uri || s.url)) return { uri: s.uri || s.url };
+  return FALLBACK;
+};
 
 // safe read Animated.Value
 const getAnimatedValue = (av) => {
@@ -46,7 +58,7 @@ const getAnimatedValue = (av) => {
 
 /**
  * ZoomableImage
- * - uri: image url
+ * - uri: may be number (local require), string, or object {uri}
  * - resetTrigger: increments to reset zoom when parent changes page
  * - onZoomChange(zoomed:boolean): notify parent when zoom state changes
  */
@@ -64,7 +76,7 @@ const ZoomableImage = ({ uri, resetTrigger, onZoomChange }) => {
     try { onZoomChange?.(zoomed); } catch (_) {}
   }, [onZoomChange]);
 
-  // Pinch gesture
+  // pinch gesture
   const pinch = Gesture.Pinch()
     .onUpdate((e) => {
       const next = Math.max(1, Math.min(baseScaleRef.current * e.scale, 4));
@@ -77,7 +89,7 @@ const ZoomableImage = ({ uri, resetTrigger, onZoomChange }) => {
       notifyZoom(baseScaleRef.current > 1);
     });
 
-  // Pan gesture for dragging when zoomed
+  // pan gesture for dragging when zoomed
   const pan = Gesture.Pan()
     .onUpdate((e) => {
       if (baseScaleRef.current > 1) {
@@ -125,6 +137,15 @@ const ZoomableImage = ({ uri, resetTrigger, onZoomChange }) => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [resetTrigger]);
 
+  // normalize incoming uri into a valid Image source usable by RN <Image source={...} />
+  const imageSource = (() => {
+    if (!uri) return FALLBACK;
+    if (typeof uri === 'number') return uri; // local require
+    if (typeof uri === 'string') return { uri };
+    if (typeof uri === 'object' && (uri.uri || uri.url)) return { uri: uri.uri || uri.url };
+    return FALLBACK;
+  })();
+
   return (
     <View style={styles.slide}>
       <GestureDetector gesture={gesture}>
@@ -145,12 +166,17 @@ const ZoomableImage = ({ uri, resetTrigger, onZoomChange }) => {
             >
               {isLoading && <ActivityIndicator style={styles.loader} size="large" />}
               <Image
-                source={{ uri: uri || FALLBACK }}
+                source={imageSource}
                 style={[styles.image, { width: WINDOW_WIDTH, height: DEFAULT_HEIGHT }]}
                 resizeMode="contain"
                 onLoadStart={() => setIsLoading(true)}
                 onLoadEnd={() => setIsLoading(false)}
                 onError={(e) => {
+                  // log and stop loader; normalized fallback already covers missing source
+                  // For remote failures, imageSource won't change automatically — but because
+                  // normalizeSlide falls back to a local asset only when input is invalid,
+                  // we keep behavior simple. If you want to swap to FALLBACK on error,
+                  // add local state and set it here.
                   console.warn('Image load error', e.nativeEvent || e);
                   setIsLoading(false);
                 }}
@@ -296,7 +322,7 @@ const ImageCarousel = forwardRef(({
 
   const renderItem = ({ item, index }) => (
     <ZoomableImage
-      uri={item.uri}
+      uri={item && (typeof item === 'number' ? item : item.uri)}
       resetTrigger={`${resetTrigger}-${index}`}
       onZoomChange={handleZoomChange}
     />
@@ -319,7 +345,6 @@ const ImageCarousel = forwardRef(({
         removeClippedSubviews
         scrollEnabled={scrollEnabled}
         getItemLayout={(_, i) => ({ length: WINDOW_WIDTH, offset: WINDOW_WIDTH * i, index: i })}
-        showsVerticalScrollIndicator={false}
       />
 
       {/* left/right chevrons */}
@@ -365,6 +390,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#fff',
     justifyContent: 'center',
     alignItems: 'center',
+    
   },
   flex: { flex: 1 },
   image: {

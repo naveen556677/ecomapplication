@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useRef } from 'react';
+import React, { useState, useMemo, useRef, useEffect } from 'react';
 import {
   View,
   Text,
@@ -48,9 +48,29 @@ export default function ProductDetailsScreen({ route, navigation }) {
         ? variant.images
         : []);
 
-  const [qty, setQty] = useState(1);
-
+  // get cart and addToCart actions from store
+  const cart = useStore((s) => s.cart || []);
   const addToCart = useStore((s) => s.addToCart);
+
+  // try to match cart item by product id
+  const productId = product.productId ?? product.id ?? null;
+  const cartItem = useMemo(() => {
+    if (!productId) return null;
+    return cart.find((it) => {
+      const id = it.id ?? it.productId ?? null;
+      return id && id.toString() === productId.toString();
+    }) ?? null;
+  }, [cart, productId]);
+
+  // quantity: if product exists in cart, initialize to that qty, otherwise default 1
+  const initialQty = Number(cartItem?.qty ?? cartItem?.quantity ?? cartItem?.count ?? 0) || 1;
+  const [qty, setQty] = useState(initialQty);
+
+  // keep qty in sync if cart changes externally (e.g., updated elsewhere)
+  useEffect(() => {
+    const newQty = Number(cartItem?.qty ?? cartItem?.quantity ?? cartItem?.count ?? 0) || 1;
+    setQty(newQty);
+  }, [cartItem]);
 
   const displayPrice = getDisplayPrice(product, variant);
   const priceText = displayPrice != null ? formatPrice(displayPrice) : '—';
@@ -70,7 +90,7 @@ export default function ProductDetailsScreen({ route, navigation }) {
     } catch (e) { }
   }
 
-  function onAddToCart() {
+  function onAddToCartPress() {
     const snapshotPrice = displayPrice != null ? displayPrice : bestPrice ?? 0;
     const snapshot = {
       id: product.productId || product.id,
@@ -87,9 +107,19 @@ export default function ProductDetailsScreen({ route, navigation }) {
     try {
       addToCart(snapshot, qty);
       Alert.alert('Added to cart', `${snapshot.title} x${qty} added.`);
+      // navigate to cart if you'd like immediate view after add; keep as-is if not desired
+      // navigation.navigate('Cart');
     } catch (e) {
       console.warn('addToCart failed', e);
       Alert.alert('Error', 'Unable to add to cart.');
+    }
+  }
+
+  function onViewCartPress() {
+    try {
+      navigation.navigate('Cart');
+    } catch (e) {
+      console.warn('Navigation to Cart failed', e);
     }
   }
 
@@ -108,6 +138,10 @@ export default function ProductDetailsScreen({ route, navigation }) {
     navigation.setOptions({ title: title.length > 32 ? `${title.slice(0, 30)}…` : title });
   }, [navigation, product]);
 
+  // whether product already exists in cart with qty > 0
+  const inCart = (Number(cartItem?.qty ?? cartItem?.quantity ?? cartItem?.count ?? 0) || 0) > 0;
+  const inCartQty = Number(cartItem?.qty ?? cartItem?.quantity ?? cartItem?.count ?? 0) || 0;
+
   return (
     <SafeAreaView style={styles.safe}>
       <StatusBar barStyle="dark-content" />
@@ -115,17 +149,7 @@ export default function ProductDetailsScreen({ route, navigation }) {
         <ScrollView contentContainerStyle={{ paddingBottom: 180 }}>
           {/* Hero + Carousel */}
           <View style={styles.heroWrap}>
-            {/* <ImageCarousel ref={carouselRef} images={images} style={styles.carousel} dotSize={8} /> */}
-            <ImageCarousel 
-              slides={images}
-            />
-
-
-            {/* floating price badge */}
-            {/* <View style={styles.priceBadge}>
-              <Text style={styles.priceBadgeText}>{priceText}</Text>
-              {discountPct > 0 && <Text style={styles.priceBadgeSub}>{discountPct}% OFF</Text>}
-            </View> */}
+            <ImageCarousel slides={images} />
           </View>
 
           {/* thumbnails */}
@@ -185,29 +209,36 @@ export default function ProductDetailsScreen({ route, navigation }) {
 
             <View style={styles.section}>
               <Text style={styles.sectionTitle}>Quantity</Text>
-              <QuantitySelector qty={qty} onChange={setQty} min={1} max={999} step={1} />
+              {/* <QuantitySelector qty={qty} onChange={setQty} min={1} max={999} step={1} /> */}
+              {inCart ? (
+                <Text style={{ marginTop: 8, color: '#6b7280' }}>
+                  Currently in cart: <Text style={{ fontWeight: '800', color: '#111827' }}>{inCartQty}</Text>
+                </Text>
+              ): <Text style={{ marginTop: 8, color: '#6b7280' }}>
+                  Currently in cart: <Text style={{ fontWeight: '800', color: '#111827' }}>0</Text>
+                </Text> }
             </View>
 
-           <View style={{ marginTop: 18 }}>
-  <TouchableOpacity
-    onPress={onShare}
-    activeOpacity={0.85}
-    style={{
-      borderWidth: 1,
-      borderColor: '#d1d5db',
-      paddingVertical: 12,
-      paddingHorizontal: 16,
-      borderRadius: 12,
-      alignSelf: 'flex-start',
-      flexDirection: 'row',
-      alignItems: 'center',
-      backgroundColor: '#fff',
-    }}
-  >
-    <Text style={{ fontSize: 18, marginRight: 6 }}>📤</Text>
-    <Text style={{ fontWeight: '700', color: '#111827' }}>Share Product</Text>
-  </TouchableOpacity>
-</View>
+            <View style={{ marginTop: 18 }}>
+              <TouchableOpacity
+                onPress={onShare}
+                activeOpacity={0.85}
+                style={{
+                  borderWidth: 1,
+                  borderColor: '#d1d5db',
+                  paddingVertical: 12,
+                  paddingHorizontal: 16,
+                  borderRadius: 12,
+                  alignSelf: 'flex-start',
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  backgroundColor: '#fff',
+                }}
+              >
+                <Text style={{ fontSize: 18, marginRight: 6 }}>📤</Text>
+                <Text style={{ fontWeight: '700', color: '#111827' }}>Share Product</Text>
+              </TouchableOpacity>
+            </View>
 
           </View>
         </ScrollView>
@@ -216,24 +247,26 @@ export default function ProductDetailsScreen({ route, navigation }) {
         <View style={styles.stickyFooter}>
           <View style={styles.footerLeft}>
             <Text style={styles.footerPrice}>{formatPrice((displayPrice != null ? displayPrice : bestPrice) ?? 0)}</Text>
+            {/* show the qty currently selected */}
             <Text style={styles.footerSub}>({qty} pcs)</Text>
           </View>
 
           <View style={styles.footerRight}>
-            <TouchableOpacity style={styles.addBtn} onPress={onAddToCart} activeOpacity={0.9}>
-              <Text style={styles.addBtnText}>Add to cart</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={styles.buyBtn}
-              onPress={() => {
-                onAddToCart();
+            {inCart ? (
+              // If already in cart -> show "View cart"
+              <TouchableOpacity style={[styles.addBtn, styles.viewBtn]} onPress={onViewCartPress} activeOpacity={0.9}>
+                <Text style={styles.addBtnText}>View cart</Text>
+              </TouchableOpacity>
+            ) : (
+              // Otherwise show add to cart
+              <TouchableOpacity style={styles.addBtn} onPress={() => {
+                onAddToCartPress();
+                // after adding, navigate to cart (optional). If you want to keep user here, remove navigate.
                 navigation.navigate('Cart');
-              }}
-              activeOpacity={0.9}
-            >
-              <Text style={styles.buyBtnText}>Buy now</Text>
-            </TouchableOpacity>
+              }} activeOpacity={0.9}>
+                <Text style={styles.addBtnText}>Add to cart</Text>
+              </TouchableOpacity>
+            )}
           </View>
         </View>
       </KeyboardAvoidingView>
@@ -282,9 +315,9 @@ const styles = StyleSheet.create({
   sectionTitle: { fontWeight: '800', marginBottom: 8, color: '#0f172a' },
   bodyText: { color: '#374151' },
 
-  specRow: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 6, borderBottomWidth: 1, borderColor: '#f1f5f9' },
+  specRow: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 6, borderBottomWidth: 1, borderColor: '#f1f5f9',gap:10 },
   specKey: { color: '#6b7280' },
-  specVal: { fontWeight: '700' },
+  specVal: { fontWeight: '500' ,width:"80%" },
 
   shareBtn: { alignSelf: 'flex-start', paddingHorizontal: 12, paddingVertical: 10, borderRadius: 10, borderWidth: 1, borderColor: '#e6eefc', backgroundColor: '#fff' },
   shareText: { color: '#0f172a', fontWeight: '700' },
@@ -310,6 +343,8 @@ const styles = StyleSheet.create({
 
   addBtn: { backgroundColor: '#111827', paddingHorizontal: 16, paddingVertical: 12, borderRadius: 12, marginRight: 8 },
   addBtnText: { color: '#fff', fontWeight: '800' },
+
+  viewBtn: { backgroundColor: '#0b84ff' },
 
   buyBtn: { backgroundColor: '#ff6b00', paddingHorizontal: 16, paddingVertical: 12, borderRadius: 12 },
   buyBtnText: { color: '#fff', fontWeight: '800' },

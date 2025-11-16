@@ -7,6 +7,7 @@ export default function SearchBar({ onSearch }) {
     <View style={styles.wrap}>
       <TextInput
         placeholder="Search products..."
+        placeholderTextColor={'gray'}
         value={value}
         onChangeText={t => { setValue(t); onSearch && onSearch(t); }}
         style={styles.input}

@@ -9,6 +9,10 @@ import {
   Dimensions,
   Image,
   RefreshControl,
+  Alert,
+  Platform,
+  ActivityIndicator,
+  Linking,
 } from 'react-native';
 import ProductCard from '../components/ProductCard';
 import FloatingCartButton from '../components/FloatingCartButton';
@@ -18,10 +22,14 @@ import { useProductsStore } from '../store/productsStore';
 import useStore from '../store/useStore';
 import { debounce } from '../utils/debounce';
 import { ScannerScreen } from './ScannerScreen';
-import { useCameraPermission } from 'react-native-vision-camera';
+import { Camera } from 'react-native-vision-camera';
+import logoutImg from "../assets/logout.png";
+import historyImg from "../assets/history.png";
+import barcodeImg from "../assets/barcode.png";
+import { GoogleSignin } from '@react-native-google-signin/google-signin';
 
 const { width } = Dimensions.get('window');
-const GRID_GAP = 12;
+const GRID_GAP = 8;
 const CARD_WIDTH = (width - GRID_GAP * 3) / 2; // 2 columns with paddings
 
 const AnimatedFlatList = Animated.createAnimatedComponent(require('react-native').FlatList);
@@ -35,41 +43,182 @@ export default function ProductsListScreen({ navigation }) {
   const refreshing = useProductsStore((s) => s.refreshing);
   const refresh = useProductsStore((s) => s.refresh);
   const hasMore = useProductsStore((s) => s.hasMore);
+  const lastScan = useProductsStore((s) => s.scanItems);
   const [isScanner, setScanner] = useState(false);
-  const {hasPermissions} = useCameraPermission()
+  const [filteredItems, setFilteredItems] = useState(items);
 
   const addToCart = useStore((s) => s.addToCart);
   const cart = useStore((s) => s.cart || []);
+  const logoutAction = useStore((s) => s.logout ?? null);
   const cartCount = (cart || []).reduce((acc, it) => acc + (Number(it.qty) || 0), 0);
+
+  // track which product ids are currently being added (shows loader)
+  const [addingIds, setAddingIds] = useState(new Set());
+
+const WEB_CLIENT_ID = '664954328506-941petpngfhungdiq9506j9pdohtinl9.apps.googleusercontent.com';
+  useEffect(() => {
+    GoogleSignin.configure({ webClientId: WEB_CLIENT_ID, offlineAccess: true });
+  }, [])
+
+  const setAdding = (id, val) => {
+    setAddingIds((prev) => {
+      const next = new Set(prev);
+      if (val) next.add(id);
+      else next.delete(id);
+      return next;
+    });
+  };
+
+  // wrapped quick add that sets loader per-product
+  const handleQuickAdd = async (item) => {
+    const id = item.productId ?? item.id ?? null;
+
+    // if no id, fallback to direct add
+    if (!id) {
+      try {
+        const snapshot = {
+          id: item.productId || item.id,
+          title: item.title || item.name,
+          price: (item?.variants?.[0]?.inventorySync?.sellingPrice) ?? 0,
+          imageUrls: item.imageUrls || (item.variants?.[0]?.images) || [],
+        };
+        const res = addToCart(snapshot, 1);
+        if (res && typeof res.then === 'function') await res;
+      } catch (err) {
+        console.warn('addToCart failed', err);
+      }
+      return;
+    }
+
+    // prevent duplicate adds
+    if (addingIds.has(id)) return;
+
+    setAdding(id, true);
+    try {
+      const snapshot = {
+        id: item.productId || item.id,
+        title: item.title || item.name,
+        price: (item?.variants?.[0]?.inventorySync?.sellingPrice) ?? 0,
+        imageUrls: item.imageUrls || (item.variants?.[0]?.images) || [],
+      };
+
+      const res = addToCart(snapshot, 1);
+      // support both sync and async addToCart
+      if (res && typeof res.then === 'function') {
+        await res;
+      }
+    } catch (err) {
+      console.warn('addToCart failed', err);
+    } finally {
+      setAdding(id, false);
+    }
+  };
+
+  // permission request in-flight state
+  const [isRequestingPermission, setIsRequestingPermission] = useState(false);
+
+  // handle scan button press (request permission if needed)
+  const handleScanPress = async () => {
+    // if scanner currently open -> close it
+    if (isScanner) {
+      setScanner(false);
+      return;
+    }
+
+    // prevent double presses
+    if (isRequestingPermission) return;
+    setIsRequestingPermission(true);
+
+    try {
+      // try reading current status (may not exist on all versions)
+      let current = null;
+      try {
+        if (typeof Camera.getCameraPermissionStatus === 'function') {
+          current = await Camera.getCameraPermissionStatus();
+        }
+      } catch (e) {
+        // ignore, we'll call request directly
+      }
+
+      // if already authorized, open scanner
+      if (current === 'authorized' || current === 'granted') {
+        setScanner(true);
+        setIsRequestingPermission(false);
+        return;
+      }
+
+      // request permission - triggers OS prompt (handles "Ask every time")
+      let requestResult = null;
+      try {
+        if (typeof Camera.requestCameraPermission === 'function') {
+          requestResult = await Camera.requestCameraPermission();
+        }
+      } catch (e) {
+        console.warn('Camera.requestCameraPermission failed', e);
+      }
+
+      // normalize response
+      let normalized = null;
+      if (requestResult === true) normalized = 'authorized';
+      else if (requestResult === false) normalized = 'denied';
+      else if (typeof requestResult === 'string') normalized = requestResult;
+      else if (requestResult && typeof requestResult === 'object') {
+        if (requestResult.status) normalized = requestResult.status === 'authorized' ? 'authorized' : requestResult.status;
+        else if (typeof requestResult.hasPermission === 'boolean') normalized = requestResult.hasPermission ? 'authorized' : 'denied';
+      }
+
+      // If request yielded authorization -> open scanner
+      if (normalized === 'authorized' || normalized === 'granted') {
+        setScanner(true);
+        setIsRequestingPermission(false);
+        return;
+      }
+
+      // final fallback: re-check permission status if method available
+      try {
+        if (typeof Camera.getCameraPermissionStatus === 'function') {
+          const cur2 = await Camera.getCameraPermissionStatus();
+          if (cur2 === 'authorized' || cur2 === 'granted') {
+            setScanner(true);
+            setIsRequestingPermission(false);
+            return;
+          }
+        }
+      } catch (e) {
+        // ignore
+      }
+
+      // if we reach here, permission not granted -> show settings prompt
+      Alert.alert(
+        'Camera permission required',
+        'To use the scanner, please allow camera access. Open app settings to enable camera access.',
+        [
+          { text: 'Cancel', style: 'cancel' },
+          { text: 'Open Settings', onPress: () => Linking.openSettings() },
+        ]
+      );
+    } catch (err) {
+      console.warn('Permission flow error', err);
+      Alert.alert(
+        'Camera permission',
+        'Unable to obtain camera permission. Open app settings to enable camera access.',
+        [
+          { text: 'Cancel', style: 'cancel' },
+          { text: 'Open Settings', onPress: () => Linking.openSettings() },
+        ]
+      );
+    } finally {
+      setIsRequestingPermission(false);
+    }
+  };
 
   // animated header values
   const scrollY = useRef(new Animated.Value(0)).current;
-  const headerTranslate = scrollY.interpolate({
-    inputRange: [0, 120],
-    outputRange: [0, -70],
-    extrapolate: 'clamp',
-  });
-  const headerOpacity = scrollY.interpolate({
-    inputRange: [0, 80],
-    outputRange: [1, 0],
-    extrapolate: 'clamp',
-  });
 
   // initial load (page=1)
   useEffect(() => {
     loadInitial({ page: 1, pageSize: 10 });
   }, [loadInitial]);
-
-  // quick add
-  function handleQuickAdd(item) {
-    const snapshot = {
-      id: item.productId || item.id,
-      title: item.title || item.name,
-      price: (item?.variants?.[0]?.inventorySync?.sellingPrice) ?? 0,
-      imageUrls: item.imageUrls || (item.variants?.[0]?.images) || [],
-    };
-    addToCart(snapshot, 1);
-  }
 
   // debounced search
   const debouncedLoad = useMemo(
@@ -104,7 +253,7 @@ export default function ProductsListScreen({ navigation }) {
   const renderSkeleton = () => {
     const arr = Array.from({ length: 6 });
     return arr.map((_, i) => (
-      <View key={i} style={styles.cardWrapper}>
+      <View key={i} style={{ ...styles.cardWrapper, width: CARD_WIDTH * 0.95 }}>
         <View style={[styles.card, styles.skelCard]}>
           <View style={styles.skelImage} />
           <View style={{ padding: 10 }}>
@@ -124,7 +273,8 @@ export default function ProductsListScreen({ navigation }) {
         product={item}
         onPress={() => navigation.navigate('ProductDetails', { product: item })}
         onQuickAdd={() => handleQuickAdd(item)}
-        style={{ width: CARD_WIDTH }}
+        isAdding={addingIds.has(item.productId ?? item.id ?? null)}
+        style={{ width: CARD_WIDTH * 0.95 }}
       />
     </View>
   );
@@ -142,78 +292,92 @@ export default function ProductsListScreen({ navigation }) {
       </View>
     );
 
-  // header component for FlatList
-  const ListHeader = () => (
-    <View>
-      <Animated.View style={[styles.headerBody, { opacity: headerOpacity }]}>
-        <Text style={styles.greet}>Hello 👋</Text>
-        <Text style={styles.welcome}>Find your perfect product</Text>
+  // header icons handlers
+  const onPressScanHistory = () => {
+    navigation.navigate('ScanHistory');
+  };
 
-        <View style={{ height: 12 }} />
+  // show confirmation, then logout
+  const onPressLogout = () => {
+    Alert.alert(
+      'Logout',
+      'Are you sure you want to logout?',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'OK',
+          style: 'destructive',
+          onPress: () => {
+            GoogleSignin.signOut();
+            logoutAction();
+            navigation.replace('Login');
 
-        <SearchBar onSearch={onSearch} compact />
+          },
+        },
+      ],
+      { cancelable: true }
+    );
+  };
 
-        {categories.length > 0 && (
-          <Animated.View style={{ marginTop: 12 }}>
-            <Animated.ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingLeft: 4 }}>
-              {categories.map((c, idx) => (
-                <TouchableOpacity key={idx} style={styles.chip}>
-                  <Text style={{ color: '#333', fontWeight: '600' }}>{c}</Text>
-                </TouchableOpacity>
-              ))}
-            </Animated.ScrollView>
-          </Animated.View>
-        )}
-      </Animated.View>
-
-      {featuredImages.length > 0 && (
-        <View style={styles.featuredWrap}>
-          <ImageCarousel images={featuredImages} />
-        </View>
-      )}
-
-      <View style={{ height: 8 }} />
-    </View>
-  );
-
-  // A small presentational component that draws a "scanner" glyph using corner bars.
-  // This avoids depending on an external icon library. You can replace with an image or icon if you prefer.
+  // small ScanButton component
   const ScanButton = () => (
     <TouchableOpacity
-      accessibilityLabel="Open scanner"
+      accessibilityLabel={isScanner ? 'Close scanner' : 'Open scanner'}
       activeOpacity={0.85}
-      onPress={() => setScanner((prev) => {
-        
-        return !prev
-      })}
+      onPress={handleScanPress}
       style={styles.scanButton}
+      disabled={isRequestingPermission}
     >
-      {(!hasPermissions && !isScanner) ? <View style={styles.scanIcon}>
-        <View style={[styles.corner, styles.topLeft]} />
-        <View style={[styles.corner, styles.topRight]} />
-        <View style={[styles.corner, styles.bottomLeft]} />
-        <View style={[styles.corner, styles.bottomRight]} />
-      </View> : <Text style={{color : "white"}}>Close</Text>
-      }
+      {isRequestingPermission ? (
+        <ActivityIndicator size="small" color="#111827" />
+      ) : (
+        <View style={styles.scanIcon}>
+          <Image source={barcodeImg} style={{ width: 48, height: 48 }} />
+        </View>
+      )}
     </TouchableOpacity>
   );
 
   return (
     <View style={styles.container}>
-      {/* Animated header overlay (sticky feel) */}
-      <Animated.View style={[styles.headerContainer, { transform: [{ translateY: headerTranslate }] }]}>
-        <View style={styles.headerTop}>
-          <View>
-            <Text style={styles.smallText}>Welcome back</Text>
-            <Text style={styles.headerTitle}>Explore Products</Text>
+      {/* Top header with icons */}
+      <View style={styles.headerContainer}>
+        <View style={styles.topRow}>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.headerTitle}>Store</Text>
+            <Text style={styles.smallText}>Discover products</Text>
           </View>
 
-          <TouchableOpacity style={styles.cartIcon} onPress={() => navigation.navigate('Cart')}>
-            <Text style={{ fontSize: 20 }}>🛒</Text>
-            {cartCount > 0 && <View style={styles.badge}><Text style={styles.badgeText}>{cartCount}</Text></View>}
-          </TouchableOpacity>
+          <View style={styles.iconRow}>
+            <TouchableOpacity
+              accessibilityRole="button"
+              accessibilityLabel="Scan history"
+              onPress={onPressScanHistory}
+              style={styles.iconBtn}
+            >
+              <Image source={historyImg} resizeMode="cover" style={{ width: 25, height: 25 }} />
+              <Text>Scan History</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              accessibilityRole="button"
+              accessibilityLabel="Logout"
+              onPress={onPressLogout}
+              style={[styles.iconBtn, { marginLeft: 8 }]}
+            >
+              <Image source={logoutImg} resizeMode="cover" style={{ width: 30, height: 30 }} />
+              <Text>Logout</Text>
+            </TouchableOpacity>
+          </View>
         </View>
-      </Animated.View>
+
+        {/* keep existing search and greeting inside header body for continuity */}
+        <View style={{ marginTop: 12 }}>
+          <SearchBar onSearch={onSearch} compact />
+        </View>
+      </View>
+
+      <View style={{ height: 8 }} />
 
       {/* Animated FlatList as main scroll container */}
       <AnimatedFlatList
@@ -221,11 +385,10 @@ export default function ProductsListScreen({ navigation }) {
         keyExtractor={(item) => item.productId || item.id || Math.random().toString()}
         numColumns={2}
         renderItem={renderItem}
-        columnWrapperStyle={{ justifyContent: 'space-between', paddingHorizontal: GRID_GAP }}
-        contentContainerStyle={{ paddingTop: 120, paddingBottom: 140, paddingHorizontal: GRID_GAP }}
-        // ListHeaderComponent={ListHeader}
+        columnWrapperStyle={{ justifyContent: 'space-between' }}
+        contentContainerStyle={{ paddingHorizontal: GRID_GAP, paddingTop: 8, paddingBottom: 160 }}
         ListEmptyComponent={ListEmptyComponent}
-        ListFooterComponent={loading && !items.length ? null : <View style={{ height: 24 }} />}
+        ListFooterComponent={loading ? <View style={{ height: 60 }}><Text style={{ textAlign: 'center' }}>Loading More...</Text></View> : <View style={{ height: 24 }} />}
         onEndReached={() => {
           if (!loading && hasMore) loadMore();
         }}
@@ -233,21 +396,19 @@ export default function ProductsListScreen({ navigation }) {
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refresh} />}
         onScroll={Animated.event([{ nativeEvent: { contentOffset: { y: scrollY } } }], { useNativeDriver: false })}
         scrollEventThrottle={16}
-        // while initial loading and zero items show skeleton above grid
         ListHeaderComponentStyle={{ paddingBottom: 8 }}
         ListFooterComponentStyle={{ paddingTop: 8 }}
-        // show skeleton as top items while first load
         ListEmptyComponentStyle={{ marginTop: 8 }}
-        // If loading and no items, render skeleton cards before the list
-        ListHeaderComponent={loading && items.length === 0 ? () => <View style={{ paddingHorizontal: GRID_GAP }}><View style={styles.grid}>{renderSkeleton()}</View></View> : ListHeader}
+        // show skeleton as top items while first load
+        ListHeaderComponent={loading && items.length === 0 && <View style={{ paddingHorizontal: GRID_GAP - 4 }}><View style={styles.grid}>{renderSkeleton()}</View></View>}
       />
 
       {/* Floating cart button */}
-      {/* <FloatingCartButton onPress={() => navigation.navigate('Cart')} count={cartCount} /> */}
+      <FloatingCartButton onPress={() => navigation.navigate('Cart')} count={cartCount} />
 
-      {/* Bottom-center scanner button (like GPay scanner) */}
-      <ScanButton />
-      {isScanner && <ScannerScreen isScanner={isScanner} setScanner={setScanner}/>}
+      {/* Bottom-center scanner button (always visible) */}
+      {!isScanner && <ScanButton />}
+      {isScanner && <ScannerScreen isScanner={isScanner} setScanner={setScanner} />}
     </View>
   );
 }
@@ -256,30 +417,32 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#f6f7fb' },
 
   headerContainer: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    top: 0,
-    paddingTop: 15,
+    paddingTop: Platform.OS === 'android' ? 18 : 48,
     paddingHorizontal: 16,
     paddingBottom: 12,
     backgroundColor: '#ffffff',
     borderBottomLeftRadius: 12,
     borderBottomRightRadius: 12,
-    zIndex: 20,
     shadowColor: '#000',
     shadowOpacity: 0.06,
     shadowRadius: 8,
     shadowOffset: { width: 0, height: 6 },
     elevation: 6,
   },
-  headerTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  topRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   smallText: { color: '#888', fontSize: 13 },
-  headerTitle: { fontSize: 20, fontWeight: '800', marginTop: 4 },
+  headerTitle: { fontSize: 20, fontWeight: '800', marginTop: 0 },
 
-  cartIcon: { width: 44, height: 44, borderRadius: 10, backgroundColor: '#fff', alignItems: 'center', justifyContent: 'center', elevation: 2 },
-  badge: { position: 'absolute', top: -6, right: -6, backgroundColor: '#ff3b30', borderRadius: 10, paddingHorizontal: 6, paddingVertical: 2 },
-  badgeText: { color: '#fff', fontSize: 12, fontWeight: '700' },
+  iconRow: { flexDirection: 'row', alignItems: 'center' },
+  iconBtn: {
+    width: 100,
+    height: 55,
+    borderRadius: 10,
+    backgroundColor: '#f3f4f6',
+    alignItems: 'center',
+    justifyContent: 'center',
+    elevation: 2,
+  },
 
   headerBody: {
     paddingHorizontal: GRID_GAP,
@@ -306,7 +469,7 @@ const styles = StyleSheet.create({
   featuredWrap: { paddingVertical: 12 },
 
   // grid/card
-  grid: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', gap: 10 },
+  grid: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between' },
   cardWrapper: { width: CARD_WIDTH, marginBottom: 14 },
   card: {
     width: CARD_WIDTH,
@@ -339,19 +502,19 @@ const styles = StyleSheet.create({
     width: 72,
     height: 72,
     borderRadius: 36,
-    backgroundColor: '#111827',
+    backgroundColor: '#ffffff',
     alignItems: 'center',
     justifyContent: 'center',
-    elevation: 8,
+    elevation: 10,
     shadowColor: '#000',
     shadowOpacity: 0.18,
     shadowRadius: 10,
     shadowOffset: { width: 0, height: 6 },
-    zIndex: 40,
+    zIndex: 60,
   },
   scanIcon: {
-    width: 44,
-    height: 44,
+    width: 54,
+    height: 54,
     alignItems: 'center',
     justifyContent: 'center',
     position: 'relative',

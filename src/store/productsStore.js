@@ -34,7 +34,7 @@ export const useProductsStore = createZustand((set, get) => ({
     try {
       console.log('[productsStore] loadInitial -> page:', page, 'pageSize:', pageSize, 'search:', search);
       const res = await fetchProducts({ page, pageSize, search });
-      console.log('[productsStore] raw response:', res && typeof res === 'object' ? { statusCode: res.statusCode, totalRecords: res?.data?.totalRecords } : res);
+      console.log('[productsStore] raw response:', res);
 
       const parsed = parseProductsResponse(res || {});
       const products = Array.isArray(parsed.products) ? parsed.products : [];
@@ -115,4 +115,6 @@ export const useProductsStore = createZustand((set, get) => ({
       set({ error: e.message ?? String(e), refreshing: false });
     }
   },
+
+  
 }));
